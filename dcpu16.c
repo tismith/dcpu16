@@ -16,6 +16,8 @@ typedef struct dcpu16 {
 
 	/* Memory */
 	word memory[0x10000];
+
+	double_word cycles;
 } dcpu16;
 dcpu16 cpu;
 
@@ -24,13 +26,27 @@ dcpu16 cpu;
 word literal[0x3F-0x20+1];
 word PC_literal;
 
-typedef void (* instruction_ptr) (word a, word b);
-#define INSTRUCTION(name) void name (word a, word b)
-
-typedef struct op_code {
+/* returns number of following instructions to skip */
+typedef int (* basic_instruction_ptr) (word a, word b);
+#define BASIC_INSTRUCTION(name) int name (word a, word b)
+typedef struct basic_op_code {
 	word op_code;
-	instruction_ptr instruction;
-} op_code;
+	basic_instruction_ptr instruction;
+} basic_op_code;
+
+/* returns number of following instructions to skip */
+typedef int (* nonbasic_instruction_ptr) (word a);
+#define NONBASIC_INSTRUCTION(name) int name (word a)
+typedef struct nonbasic_op_code {
+	word op_code;
+	nonbasic_instruction_ptr instruction;
+} nonbasic_op_code;
+
+#define INSTRUCTION_MAP(opcode, name) \
+	{ \
+		.op_code = opcode, \
+		.instruction = name \
+	}
 
 word * get_value(word a) {
 	/* register accesses */
@@ -42,6 +58,7 @@ word * get_value(word a) {
 		return &(cpu.memory[cpu.reg[a-0x08]]);
 	} else if (a <= 0x17) {
 		/* [next word + register] */
+		cpu.cycles++;
 		return &(cpu.memory[cpu.memory[cpu.PC++] 
 				+ cpu.reg[a-0x10]]);
 	} else if (a <= 0x1f) {
@@ -66,10 +83,11 @@ word * get_value(word a) {
 			return &(cpu.O);
 		case 0x1e:
 			/* [next word] */
+			cpu.cycles++;
 			return &(cpu.memory[cpu.PC++]);
 		case 0x1f:
 			/* next word (literal) */
-			/* TOBY: is this correct? */
+			cpu.cycles++;
 			PC_literal = cpu.PC++;
 			return &PC_literal;
 		}
@@ -82,12 +100,14 @@ word * get_value(word a) {
 	}
 }
 
-INSTRUCTION(SET) 
+BASIC_INSTRUCTION(SET) 
 {
 	*get_value(a) = *get_value(b);
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(ADD)
+BASIC_INSTRUCTION(ADD)
 {
 	double_word val = *get_value(a) + *get_value(b);
 
@@ -98,9 +118,12 @@ INSTRUCTION(ADD)
 	} else {
 		cpu.O = 0;
 	}
+
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(SUB) 
+BASIC_INSTRUCTION(SUB) 
 {
 	double_word val = *get_value(a) - *get_value(b);
 
@@ -111,25 +134,38 @@ INSTRUCTION(SUB)
 	} else {
 		cpu.O = 0;
 	}
+
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(MUL) 
+BASIC_INSTRUCTION(MUL) 
 {
 	word a_val = *get_value(a);
 	word b_val = *get_value(b);
 	*get_value(a) = a_val * b_val;
 	cpu.O = ((a_val * b_val) >> 16) & 0xFFFF;
+	
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(DIV) 
+BASIC_INSTRUCTION(DIV) 
 {
 	word a_val = *get_value(a);
 	word b_val = *get_value(b);
 	*get_value(a) = a_val / b_val;
 	cpu.O = ((a_val<< 16) / b_val) & 0xFFFF;
+
+	cpu.cycles++;
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(MOD) 
+BASIC_INSTRUCTION(MOD) 
 {
 	word b_val = *get_value(b);
 	if (b_val == 0) {
@@ -137,50 +173,109 @@ INSTRUCTION(MOD)
 	} else {
 		*get_value(a) = *get_value(a) % b_val;
 	}
+
+	cpu.cycles++;
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(SHL)
+BASIC_INSTRUCTION(SHL)
 {
 	word a_val = *get_value(a);
 	word b_val = *get_value(b);
 	*get_value(a) = a_val << b_val;
 	cpu.O = ((a_val<< b_val) >> 16) & 0xFFFF;
+
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(SHR) 
+BASIC_INSTRUCTION(SHR) 
 {
 	word a_val = *get_value(a);
 	word b_val = *get_value(b);
 	*get_value(a) = a_val >> b_val;
 	cpu.O = ((a_val << 16) >> b_val) & 0xFFFF;
+
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(AND) 
+BASIC_INSTRUCTION(AND) 
 {
 	*get_value(a) = *get_value(a) & *get_value(b);
+
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(BOR)
+BASIC_INSTRUCTION(BOR)
 {
 	*get_value(a) = *get_value(a) | *get_value(b);
+
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(XOR)
+BASIC_INSTRUCTION(XOR)
 {
 	*get_value(a) = *get_value(a) ^ *get_value(b);
+
+	cpu.cycles++;
+	return 0;
 }
 
-INSTRUCTION(IFE);
-INSTRUCTION(IFN);
-INSTRUCTION(IFG);
-INSTRUCTION(IFB);
-
-#define INSTRUCTION_MAP(opcode, name) \
-	{ \
-		.op_code = opcode, \
-		.instruction = name \
+BASIC_INSTRUCTION(IFE) {
+	cpu.cycles++;
+	cpu.cycles++;
+	if (*get_value(a) == *get_value(b)) {
+		return 0;
+	} else {
+		cpu.cycles++;
+		return 1;
 	}
-op_code op_code_map[] = {
+}
+
+BASIC_INSTRUCTION(IFN) 
+{
+	cpu.cycles++;
+	cpu.cycles++;
+	if (*get_value(a) != *get_value(b)) {
+		return 0;
+	} else {
+		cpu.cycles++;
+		return 1;
+	}
+}
+
+BASIC_INSTRUCTION(IFG) 
+{
+	cpu.cycles++;
+	cpu.cycles++;
+	if (*get_value(a) > *get_value(b)) {
+		return 0;
+	} else {
+		cpu.cycles++;
+		return 1;
+	}
+}
+
+BASIC_INSTRUCTION(IFB)
+{
+	cpu.cycles++;
+	cpu.cycles++;
+	if ((*get_value(a) & *get_value(b)) != 0) {
+		return 0;
+	} else {
+		cpu.cycles++;
+		return 1;
+	}
+}
+
+basic_op_code basic_op_code_map[] = {
 	INSTRUCTION_MAP(0x01, SET),
 	INSTRUCTION_MAP(0x02, ADD),
 	INSTRUCTION_MAP(0x03, SUB),
@@ -196,6 +291,21 @@ op_code op_code_map[] = {
 	INSTRUCTION_MAP(0x0D, IFN),
 	INSTRUCTION_MAP(0x0E, IFG),
 	INSTRUCTION_MAP(0x0F, IFB)
+};
+
+NONBASIC_INSTRUCTION(JSR)
+{
+	word a_val = *get_value(a);
+	cpu.memory[--cpu.SP] = a_val;
+	cpu.PC = a_val;
+
+	cpu.cycles++;
+	cpu.cycles++;
+	return 0;
+}
+
+nonbasic_op_code nonbasic_op_code_map[] = {
+	INSTRUCTION_MAP(0x01, JSR)
 };
 
 int main(int argc, char **argv)

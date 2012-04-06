@@ -1,3 +1,6 @@
+/* Emulator for the DCPU-16 from 0x10c.com
+ * This source, copyright Toby Smith toby@tismith.id.au */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>

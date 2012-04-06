@@ -101,30 +101,38 @@ word * get_value(word a, word * target) {
 		case 0x18:
 			/* POP / [SP++] */
 			val = &(cpu.memory[cpu.SP++]);
+			break;
 		case 0x19:
 			/* PEEK / [SP] */
 			val = &(cpu.memory[cpu.SP]);
+			break;
 		case 0x1a:
 			/* PUSH / [--SP] */
 			val = &(cpu.memory[--cpu.SP]);
+			break;
 		case 0x1b:
 			/* SP */
 			val = &(cpu.SP);
+			break;
 		case 0x1c:
 			/* PC */
 			val = &(cpu.PC);
+			break;
 		case 0x1d:
 			/* O */
 			val = &(cpu.O);
+			break;
 		case 0x1e:
 			/* [next word] */
 			val = &(cpu.memory[cpu.memory[cpu.PC++]]);
 			cpu.cycles++;
+			break;
 		case 0x1f:
 			/* next word (literal) */
 			*target = cpu.memory[cpu.PC++];
 			val = target;
 			cpu.cycles++;
+			break;
 		}
 	} else if (a <= 0x3F) {
 		*target = a - 0x20;
@@ -455,7 +463,6 @@ void handle_instruction(instruction i) {
 
 	while (skip > 0) { 
 		/* need to skip the next intruction, including it's values */
-		/* this is how I'm doing IFs - the 0 means don't update cpu */
 		word value = cpu.memory[cpu.PC];
 		cpu.PC += instruction_length(value);
 		skip--;

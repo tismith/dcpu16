@@ -7,12 +7,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/* halts the main loop */
+volatile int halt = 0;
+int verbose = 1;
+
 typedef uint16_t word;
 typedef uint64_t double_word;
-/* halts the main loop */
-int halt = 0;
-
-enum registers {A = 0, B, C, X, Y, Z, I, J, K};
+enum registers {A = 0, B, C, X, Y, Z, I, J};
 typedef struct dcpu16 {
 	/* Special */
 	word PC;
@@ -20,7 +21,7 @@ typedef struct dcpu16 {
 	word O;
 	
 	/* Registers */
-	word reg[9];
+	word reg[8];
 
 	/* Memory */
 	word memory[0x10000];
@@ -50,7 +51,7 @@ typedef struct nonbasic_op_code {
 } nonbasic_op_code;
 
 #define INSTRUCTION_MAP(opcode, name) \
-	{ \
+	[opcode] = { \
 		.op_code = opcode, \
 		.instruction = name \
 	}
@@ -83,6 +84,8 @@ int addressing_length(word a) {
 	return 0;
 }
 
+/* returns a pointer to either a temporary value (aka a literal) or
+ * to a memory or register */
 word * get_value(word a, word * target) {
 	/* register accesses */
 	word * val = NULL;
@@ -337,7 +340,7 @@ basic_op_code basic_op_code_map[] = {
 NONBASIC_INSTRUCTION(JSR)
 {
 	word a_val = *a;
-	cpu.memory[--cpu.SP] = a_val;
+	cpu.memory[--cpu.SP] = cpu.PC;
 	cpu.PC = a_val;
 
 	cpu.cycles++;
@@ -356,10 +359,10 @@ void dump_registers()
 			cpu.PC, cpu.SP, cpu.O);
 	printf(" A: 0x%04X  B: 0x%04X  C: 0x%04X\n", 
 			cpu.reg[0], cpu.reg[1], cpu.reg[2]);
-	printf(" I: 0x%04X  J: 0x%04X  K: 0x%04X\n", 
-			cpu.reg[3], cpu.reg[4], cpu.reg[5]);
 	printf(" X: 0x%04X  Y: 0x%04X  Z: 0x%04X\n", 
-			cpu.reg[6], cpu.reg[7], cpu.reg[8]);
+			cpu.reg[3], cpu.reg[4], cpu.reg[5]);
+	printf(" I: 0x%04X  J: 0x%04X\n", 
+			cpu.reg[6], cpu.reg[7]);
 	printf(" Cycles: %llu\n", cpu.cycles);
 	printf("--------------------------------\n");
 	return;
@@ -428,7 +431,7 @@ instruction decode_instruction(word val) {
 		i.b = get_value(b, &tempB);
 	}
 
-	print_instruction(i);
+	if (verbose) print_instruction(i);
 
 	return i;
 }
@@ -469,7 +472,7 @@ void handle_instruction(instruction i) {
 	}
 }	
 
-void handle_quit(int sig) {
+void handle_usr1(int sig) {
 	dump_registers();
 	if (halt) { 
 		halt = 0; 
@@ -478,12 +481,13 @@ void handle_quit(int sig) {
 	}
 }
 
-void handle_hup(int sig) {
+void handle_usr2(int sig) {
 	dump_memory();
 }
 
 void usage(char * name) {
-	fprintf(stderr, "%s: -f <filename.bin>\n", name);
+	fprintf(stderr, "%s: -f <filename.bin> [-q] [-v] " \
+			"[-i <interval>]\n", name);
 	exit(EXIT_FAILURE);
 }
 
@@ -492,15 +496,26 @@ int main(int argc, char **argv)
 	int ch;
 	int fd;
 	char * filename = NULL;
+	int interval = 1;
 	int i = 0;
-	signal(SIGQUIT, handle_quit);
-	signal(SIGHUP, handle_hup);
+	signal(SIGUSR1, handle_usr1);
+	signal(SIGUSR2, handle_usr2);
 	(void)memset(&cpu, 0, sizeof(cpu));
+	cpu.SP=0xFFFF;
 
-	if ((ch = getopt(argc, argv, "f:")) != -1) {
+	while ((ch = getopt(argc, argv, "qvi:f:")) != -1) {
 		switch (ch) {
 		case 'f':
 			filename = optarg;
+			break;
+		case 'i':
+			interval = atoi(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case 'q':
+			verbose--;
 			break;
 		default:
 			usage(argv[0]);
@@ -531,12 +546,16 @@ int main(int argc, char **argv)
 		cpu.memory[i] += byte;
 	}
 
-	while(!halt) {
+	while(1) {
 		word value = cpu.memory[cpu.PC++];
 		instruction i = decode_instruction(value);
 		handle_instruction(i);
-		dump_registers();
-		sleep(1);
+
+		if (verbose) dump_registers();
+
+		sleep(interval);
+
+		while(halt) {};
 	}
 
 	exit(EXIT_SUCCESS);

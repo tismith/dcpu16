@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 typedef uint16_t word;
 typedef uint64_t double_word;
 
-enum registers {A = 0x00, B, C, X, Y, Z, I, J, K};
+enum registers {A = 0, B, C, X, Y, Z, I, J, K};
 typedef struct dcpu16 {
 	/* Special */
 	word PC;
@@ -59,8 +60,7 @@ word * get_value(word a) {
 	} else if (a <= 0x17) {
 		/* [next word + register] */
 		cpu.cycles++;
-		return &(cpu.memory[cpu.memory[cpu.PC++] 
-				+ cpu.reg[a-0x10]]);
+		return &(cpu.memory[cpu.PC++] + cpu.reg[a-0x10]);
 	} else if (a <= 0x1f) {
 		switch (a) {
 		case 0x18:
@@ -308,8 +308,95 @@ nonbasic_op_code nonbasic_op_code_map[] = {
 	INSTRUCTION_MAP(0x01, JSR)
 };
 
+void dump_registers() 
+{
+	printf("DCPU-16 REGISTERS\n");
+	printf("PC: 0x%04X SP: 0x%04X  O: 0x%04X\n", 
+			cpu.PC, cpu.SP, cpu.O);
+	printf(" A: 0x%04X  B: 0x%04X  C: 0x%04X\n", 
+			cpu.reg[0], cpu.reg[1], cpu.reg[2]);
+	printf(" I: 0x%04X  J: 0x%04X  K: 0x%04X\n", 
+			cpu.reg[3], cpu.reg[4], cpu.reg[5]);
+	printf(" X: 0x%04X  Y: 0x%04X  Z: 0x%04X\n", 
+			cpu.reg[6], cpu.reg[7], cpu.reg[8]);
+	printf(" Cycles: %llu\n", cpu.cycles);
+	printf("--------------------------------\n");
+	return;
+}
+
+typedef enum {BASIC, NONBASIC} instruction_t;
+typedef struct instruction {
+	word op_code;
+	word a;
+	word b;
+	instruction_t type;
+} instruction;
+
+void print_instruction(instruction i) {
+	switch (i.type) {
+	case (BASIC):
+		printf("   BASIC opcode: %04X a: %04X b: %04X\n", 
+				i.op_code, i.a, i.b);
+		break;
+	case (NONBASIC):
+		printf("NONBASIC opcode: %04X a: %04X\n",
+				i.op_code, i.a);
+		break;
+	}
+	return;
+}
+
+instruction decode_instruction(word val) {
+	instruction i;
+
+	/* Basic op codes:
+	 * bbbbbbaaaaaaoooooo */
+	i.op_code = val & 0x000F;
+	i.a = (val & 0x03F0) >> 4;
+	i.b = val & (0xFC00) >> 10;
+	i.type = BASIC;
+
+	if (i.op_code == 0x00) {
+		/* Non-basic op codes: 
+		 * aaaaaaoooooo0000 */
+		i.type = NONBASIC;
+		i.b = i.a;
+		i.op_code = i.a;
+	}
+
+	print_instruction(i);
+
+	return i;
+}
+
+void handle_instruction(instruction i) {
+	int skip = 0;
+
+	switch (i.type) {
+	case BASIC:
+		skip = basic_op_code_map[i.op_code].instruction(i.a, i.b);
+		break;
+	case NONBASIC:
+		skip = nonbasic_op_code_map[i.op_code].instruction(i.a);
+		break;
+	}
+
+	while (skip > 0) { 
+		/* need to skip the next intruction, including it's values */
+		/* this is how I'm doing IFs */
+		skip--;
+	}
+}	
+
 int main(int argc, char **argv)
 {
+	(void)memset(&cpu, 0, sizeof(cpu));
+	cpu.memory[0] = 0x7c01;
+	cpu.memory[1] = 0x0030;
+
+	handle_instruction(decode_instruction(cpu.memory[cpu.PC++]));
+
+	dump_registers();
 	return 0;
 }
 

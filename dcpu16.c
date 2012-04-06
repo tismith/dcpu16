@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -12,7 +13,8 @@ volatile int halt = 0;
 int verbose = 1;
 
 typedef uint16_t word;
-typedef uint64_t double_word;
+typedef uint32_t double_word;
+typedef uint64_t quad_word;
 enum registers {A = 0, B, C, X, Y, Z, I, J};
 typedef struct dcpu16 {
 	/* Special */
@@ -26,7 +28,7 @@ typedef struct dcpu16 {
 	/* Memory */
 	word memory[0x10000];
 
-	double_word cycles;
+	quad_word cycles;
 } dcpu16;
 dcpu16 cpu;
 
@@ -363,7 +365,7 @@ void dump_registers()
 			cpu.reg[3], cpu.reg[4], cpu.reg[5]);
 	printf(" I: 0x%04X  J: 0x%04X\n", 
 			cpu.reg[6], cpu.reg[7]);
-	printf(" Cycles: %llu\n", cpu.cycles);
+	printf(" Cycles: %" PRIu64 "\n", cpu.cycles);
 	printf("--------------------------------\n");
 	return;
 }

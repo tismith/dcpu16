@@ -1,0 +1,9 @@
+Basic emulator for the DCPU-16 CPU from 0x10c.com
+
+Usage: 
+./dcpu16 -f filename.bin [-i <seconds>] [-v] [-q]
+
+Send it SIGUSR1 to pause execution after the current instruction, and dump 
+registers.
+
+Send it a SIGUSR2 to immediately dump the memory.

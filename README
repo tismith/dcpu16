@@ -1,3 +1,4 @@
+dcpu16.c: 
 Basic emulator for the DCPU-16 CPU from 0x10c.com
 
 Usage: 
@@ -7,3 +8,11 @@ Send it SIGUSR1 to pause execution after the current instruction, and dump
 registers.
 
 Send it a SIGUSR2 to immediately dump the memory.
+
+----------
+
+disassemble.c:
+Basic disassember for the DCPU-16 CPU. 
+
+Usage:
+./disassemble -f filename.bin

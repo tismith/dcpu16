@@ -506,7 +506,6 @@ int main(int argc, char **argv)
 	signal(SIGUSR1, handle_usr1);
 	signal(SIGUSR2, handle_usr2);
 	(void)memset(&cpu, 0, sizeof(cpu));
-	cpu.SP=0xFFFF;
 
 	while ((ch = getopt(argc, argv, "qvi:f:")) != -1) {
 		switch (ch) {

@@ -11,7 +11,6 @@
 #include <unistd.h>
 
 typedef uint16_t word;
-typedef uint32_t double_word;
 uint8_t buffer[2*0x10000]; /* 8 bit */
 
 char reg[] = {'A', 'B', 'C', 'X', 'Y', 'Z', 'I', 'J'};
@@ -26,6 +25,7 @@ typedef struct op_code {
 		.name = #symbol \
 	}
 
+/* offset is the index into the buffer of the opcode */
 int print_value(int offset, word a) {
 	int size = 0;
 	int val = 0;
@@ -105,8 +105,6 @@ int print_instruction(int offset, word val) {
 	word op_code, a, b;
 	int size = 2;
 
-	printf("%04x: ", offset/2);
-
 	if (val == 0x00) {
 		printf("NULL");
 		return size;
@@ -124,12 +122,16 @@ int print_instruction(int offset, word val) {
 		 * aaaaaaoooooo0000 */
 		printf("%s ", nonbasic_op_code_map[a].name);
 		size += print_value(offset, b);
+
 	} else {
-		int s1 = 0;
+		int s1, s2 = 0;
 		printf("%s ", basic_op_code_map[op_code].name);
+
 		s1 = print_value(offset, a);
 		printf(", ");
-		size += s1 + print_value(offset+s1, b);
+		s2 = print_value(offset+s1, b);
+
+		size += s1 + s2;
 	}
 
 	return size;
@@ -172,7 +174,9 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+	/* filelen - 1, since opcodes are at least 2 bytes */
 	for (i = 0; i < (filelen - 1); ) {
+		printf("%04x: ", i/2);
 		word value = (buffer[i] << 8) + buffer[i+1];
 		i += print_instruction(i, value);
 		printf("\n");
